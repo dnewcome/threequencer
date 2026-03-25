@@ -12,3 +12,7 @@ url = "https://github.com/dnewcome/threequencer"
 site = "dnuke.com"
 devlog_tag = "threequencer"
 devlog_dest = "../dnuke.com/src/blog/posts"
+
+[devlog]
+version = "v1.0"
+source = "https://github.com/dnewcome/devlog-tools"
