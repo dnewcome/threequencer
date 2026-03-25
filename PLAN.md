@@ -4,6 +4,12 @@
 
 A 3D musical sequencer built around a 16×16×16 cube of voxels. Each voxel is a "step" that can be on or off (or carry note/velocity data). The cube can be "read" by sweeping through it in many ways — axis-aligned, diagonal, planar — and the intersecting active voxels trigger notes.
 
+### Design Philosophy
+
+The goal is a tool serious musicians can actually use to generate interesting ideas — not a toy, but not sterile either. The 3D space should feel surprising and generative: the kind of thing where you stumble into something that sounds good and don't quite know why. Whimsy and utility aren't opposites here; the unpredictability of the 3D structure is a feature.
+
+The 3D interface is the main differentiator. Every design decision should ask: "does this make the cube more expressive, more readable, or more fun to navigate?" Interaction should be low-friction — you should be able to explore the space without fighting the UI.
+
 ---
 
 ## Core Architecture
@@ -124,6 +130,54 @@ Instead of axis-aligned planes, define an arbitrary cutting plane and sweep it t
 - [ ] Save/load patterns (JSON)
 - [ ] Multi-plane / polyrhythm mode
 - [ ] Visual flair (bloom, transparency, voxel animation on trigger)
+
+---
+
+## Open Questions / Ideas Backlog
+
+These are directions worth exploring but not yet committed to. Capturing them here so they don't get lost.
+
+### 3D Navigation & Visibility
+
+The biggest UX challenge so far is making the interior of the cube legible. Near-plane peel culling (Phase 0 complete) was the first move. Other ideas:
+
+- **Isolate-layer mode** — hold a key or tap a button to show only one Z-layer at a time, as a flat 2D grid. Orbiting rotates the whole cube; pressing a Z-index button "peels" to that layer. Good for detailed editing.
+- **X-ray / slice view** — semi-transparent ghost of the whole cube with a highlighted cross-section plane you can drag to any position. Think MRI scan scrubbing.
+- **Zoom-to-layer** — double-tap/click a face of the cube to zoom the camera straight into that Z-layer and switch to a 2D edit mode. Back button returns to 3D.
+
+### Cellular / Nonlinear Triggering
+
+Instead of (or alongside) the sweep plane, voxels could trigger other voxels according to rules — a kind of cellular automaton sequencer:
+
+- Each active voxel has one or more **trigger links** to neighboring voxels (or arbitrary targets). When it fires, it propagates a signal along those links.
+- The signal travels at a configurable speed (in steps or milliseconds), creating echo and delay effects that emerge from the spatial arrangement.
+- **Visual**: a "laser" beam animates from source to target voxel when a trigger fires. The color of the beam encodes the trigger type (direct hit, echo, conditional, etc.).
+- Rules could include: fire-if-neighbor, fire-after-N-steps, probability, latch (stays on until cleared), etc.
+- This makes the cube feel alive — you set initial conditions and watch/listen to what emerges.
+
+### Visual Language
+
+- **Trigger beams / lasers** — line segments (or tapered cylinders) drawn between voxels when a signal propagates. Color = trigger type. Fade out over a few frames (vaporwave aesthetic, not clutter).
+- **Voxel color by role** — rather than all active voxels being the same blue, color encodes something musical: hue = pitch, saturation = velocity, brightness = recency of trigger.
+- **Pulse rings** — concentric ring expanding outward from a triggered voxel in world space, fading fast. Gives a sense of "sound leaving the voxel."
+- **Trail / persistence** — active voxels leave a fading ghost at their trigger position, creating a visual rhythm history in the cube.
+
+### Musical Usefulness
+
+What would make a real musician reach for this over a DAW step sequencer?
+
+- **Pitch mapping that makes musical sense** — Y=pitch is intuitive, but the scale/mode should be configurable. Chromatic, pentatonic, diatonic modes. Maybe a scale selector in the controls bar.
+- **MIDI out** — so it drives external synths/DAWs. This is table-stakes for serious use.
+- **Probability per voxel** — right-click sets a fire probability 0–100%. Adds organic variation without randomizing the whole pattern.
+- **Euclidean fill** — fill a row with a Euclidean rhythm (e.g. 5 hits over 16 steps). A classic generative technique that sounds great.
+- **Pattern copy/paste between layers** — drag Z-layer contents to another Z. Makes it easy to build variations.
+
+### Interaction Model Questions
+
+- Should the sweep plane be the *only* playback mode, or should nonlinear/cellular be a mode you switch into?
+- How do you edit voxels in layers you can't see (deep Z)? Isolate-layer mode seems necessary.
+- Touch on mobile: two-finger swipe to change Z-layer? Pinch = zoom, rotate = orbit, two-finger swipe Y = change layer?
+- Is there a "performance" mode where you lock editing and just orbit/watch the sequence run?
 
 ---
 

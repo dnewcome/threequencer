@@ -1,0 +1,14 @@
+id = "38d4a391-00f3-41de-814c-4f9813d48b5b"
+slug = "threequencer"
+name = "Threequencer"
+description = "A 3D voxel sequencer — 16 steps, 16 pitches, 16 layers, one cube"
+theme = "Creative code / music tools"
+tags = ["music", "sequencer", "webgl", "three.js", "creative-code", "browser"]
+
+[[repo]]
+url = "https://github.com/dnewcome/threequencer"
+
+[publish]
+site = "dnuke.com"
+devlog_tag = "threequencer"
+devlog_dest = "../dnuke.com/src/blog/posts"

@@ -1,0 +1,5 @@
+node_modules/
+
+# Devlog — generated preview, commit assets if you want
+devlog/preview.html
+# devlog/assets/*.png
