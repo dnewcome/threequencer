@@ -35,7 +35,7 @@ export class Renderer {
 
     // Active-voxel mesh — only renders as many instances as there are active voxels.
     // mesh.count is updated each frame to match the active count.
-    const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const fillMat = new THREE.MeshBasicMaterial();
     this.mesh = new THREE.InstancedMesh(fillGeo, fillMat, count);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
@@ -46,7 +46,7 @@ export class Renderer {
     const ghostMat = new THREE.MeshBasicMaterial({
       color: 0x3a3a5a,
       transparent: true,
-      opacity: 0.06,
+      opacity: 0.03,
       depthWrite: false,
     });
     this.ghostMesh = new THREE.InstancedMesh(fillGeo, ghostMat, count);
@@ -66,6 +66,21 @@ export class Renderer {
     this.outlineMesh = new THREE.InstancedMesh(outlineGeo, outlineMat, count);
     this.outlineMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
     this.scene.add(this.outlineMesh);
+
+    // Center dots — one point per grid position, never accumulate fog.
+    const dotPositions = new Float32Array(count * 3);
+    let di = 0;
+    for (let z = 0; z < SIZE; z++)
+      for (let y = 0; y < SIZE; y++)
+        for (let x = 0; x < SIZE; x++) {
+          dotPositions[di++] = x * SPACING + GRID_OFFSET;
+          dotPositions[di++] = y * SPACING + GRID_OFFSET;
+          dotPositions[di++] = z * SPACING + GRID_OFFSET;
+        }
+    const dotGeo = new THREE.BufferGeometry();
+    dotGeo.setAttribute('position', new THREE.BufferAttribute(dotPositions, 3));
+    const dotMat = new THREE.PointsMaterial({ color: 0x000000, size: 2, sizeAttenuation: false });
+    this.scene.add(new THREE.Points(dotGeo, dotMat));
 
     // Step-plane slab
     const slabGeo = new THREE.BoxGeometry(0.12, SIZE + 0.5, SIZE + 0.5);
