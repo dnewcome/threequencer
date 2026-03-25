@@ -6,6 +6,14 @@ This document explains the devlog tooling for this project and captures the thin
 
 ## Tooling
 
+### Setup (after cloning)
+
+```bash
+bash scripts/install-hooks.sh
+```
+
+This installs the `post-commit` git hook. Git hooks aren't tracked by git, so this needs to be run once per clone — on a new machine, after cloning on the Macbook, etc.
+
 ### Automatic snapshots on commit
 
 Add `[snap]` to any commit message and a devlog entry is created automatically:
