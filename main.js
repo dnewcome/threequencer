@@ -89,7 +89,7 @@ canvas.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('pointermove', (e) => {
   const dx = e.clientX - pointerDownPos.x;
   const dy = e.clientY - pointerDownPos.y;
-  if (Math.sqrt(dx * dx + dy * dy) > 4) isDragging = true;
+  if (Math.sqrt(dx * dx + dy * dy) > 10) isDragging = true;
 });
 
 canvas.addEventListener('pointerup', (e) => {
