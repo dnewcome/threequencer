@@ -155,3 +155,42 @@ Instead of axis-aligned planes, define an arbitrary cutting plane and sweep it t
 ## Name
 
 **Threequencer** — three dimensions, sequencer.
+
+---
+
+## Rendering Implementation Notes
+
+### Instanced Rendering
+
+All 4096 voxels are drawn with Three.js `InstancedMesh`, which issues a single GPU draw call with per-instance transform matrices and colors. Three separate instanced meshes are maintained:
+
+- **Active mesh** — `RoundedBoxGeometry`, opaque, bright blue (`#89b4fa`). Only active voxels are drawn; `mesh.count` is set each frame to the number of active voxels, and their matrices are packed into the front of the instance buffer. Inactive voxels are simply omitted rather than hidden with scale tricks.
+- **Ghost mesh** — same geometry, very low opacity (`~0.03`), dark color. Shows the full 16³ grid structure so the user can see and click on inactive positions.
+- **Outline mesh** — slightly larger (`1.18×`) rounded box, `BackSide` rendering only. The back faces peek past the fill cube's edges, drawing a visible border around each ghost cube without any extra geometry pass.
+
+### Color / Flash
+
+`MeshBasicMaterial` is used throughout — no lights needed. Per-instance colors are set via `InstancedMesh.setColorAt()` which populates a `USE_INSTANCING_COLOR` attribute in the shader. **Do not set `vertexColors: true`** on the fill material: `RoundedBoxGeometry` has no vertex color attribute, so that flag causes the shader to multiply instance colors by zero (everything goes black). Instance colors work automatically without it.
+
+On each clock step, triggered voxels get a flash counter. Each render frame, the active mesh lerps those voxels from white (`#ffffff`) back toward blue over 18 frames.
+
+### Near-Plane Peel Culling
+
+When the user zooms into the grid, front layers of cubes would normally block the interior. A custom culling pass is applied each frame to peel away the nearest cubes:
+
+1. **Compute a world-space cull plane** — positioned `NEAR_CULL_DIST` units in front of the camera, perpendicular to the view direction:
+   ```js
+   camera.getWorldDirection(camDir);
+   nearPlane.setFromNormalAndCoplanarPoint(
+     camDir,
+     cubeCenter.copy(camera.position).addScaledVector(camDir, NEAR_CULL_DIST)
+   );
+   ```
+
+2. **Test each cube's geometric center** against the plane. If the center is on the camera side (`distanceToPoint < 0`), the cube is culled.
+
+3. **All-or-nothing** — culled cubes are completely removed from all three meshes (active, ghost, outline) in the same frame. Ghost and outline use `scale = 0.0001` to hide instances without reordering their index buffers; the active mesh simply skips culled voxels when building its packed list.
+
+This is deliberately **not** tied to `camera.near` (the GPU depth clip plane), which would cause triangles to be clipped mid-face rather than removing whole cubes. `camera.near` stays at `0.1` so the GPU never clips geometry; all culling is done in JavaScript before the draw call.
+
+`NEAR_CULL_DIST` (default `10` units) controls how aggressively cubes peel away. Increase it for a more dramatic effect at wider zoom levels; decrease it to require tighter zoom before peeling begins.

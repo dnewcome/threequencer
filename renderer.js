@@ -5,9 +5,10 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 import { SIZE } from './grid.js';
 
-const VOXEL_SIZE  = 0.70;
-const SPACING     = 1.1;                       // center-to-center distance (1.0 = touching gaps)
-const GRID_OFFSET = -(SIZE - 1) / 2 * SPACING;
+const VOXEL_SIZE      = 0.70;
+const SPACING         = 1.1;   // center-to-center distance (1.0 = touching gaps)
+const GRID_OFFSET     = -(SIZE - 1) / 2 * SPACING;
+const NEAR_CULL_DIST  = 10;    // units from camera; cubes closer than this disappear
 
 const COLOR_ON   = new THREE.Color(0x89b4fa);
 const COLOR_TRIG = new THREE.Color(0xffffff);
@@ -50,7 +51,7 @@ export class Renderer {
       depthWrite: false,
     });
     this.ghostMesh = new THREE.InstancedMesh(fillGeo, ghostMat, count);
-    this.ghostMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    this.ghostMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.scene.add(this.ghostMesh);
 
     // Ghost outline — slightly larger cube, back-faces only, so the edges peek
@@ -64,7 +65,7 @@ export class Renderer {
       depthWrite: false,
     });
     this.outlineMesh = new THREE.InstancedMesh(outlineGeo, outlineMat, count);
-    this.outlineMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    this.outlineMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.scene.add(this.outlineMesh);
 
     // Center dots — one point per grid position, never accumulate fog.
@@ -96,6 +97,11 @@ export class Renderer {
 
     this._dummy = new THREE.Object3D();
     this._trigFlash = new Float32Array(count);
+
+    // Scratch objects for near-plane center culling (pre-allocated, no per-frame GC)
+    this._nearPlane  = new THREE.Plane();
+    this._camDir     = new THREE.Vector3();
+    this._cubeCenter = new THREE.Vector3();
 
     this._initInstances();
 
@@ -137,12 +143,35 @@ export class Renderer {
     const _c = new THREE.Color();
     let activeCount = 0;
 
+    // Recompute the near clip plane each frame from current camera state.
+    // Active cubes whose center is behind this plane are culled entirely.
+    this.camera.getWorldDirection(this._camDir);
+    this._nearPlane.setFromNormalAndCoplanarPoint(
+      this._camDir,
+      this._cubeCenter.copy(this.camera.position).addScaledVector(this._camDir, NEAR_CULL_DIST),
+    );
+
     for (let z = 0; z < SIZE; z++) {
       for (let y = 0; y < SIZE; y++) {
         for (let x = 0; x < SIZE; x++) {
           const i = this._voxelIndex(x, y, z);
-          let color = null;
+          const cx = x * SPACING + GRID_OFFSET;
+          const cy = y * SPACING + GRID_OFFSET;
+          const cz = z * SPACING + GRID_OFFSET;
 
+          // All-or-nothing cull based on cube center vs near plane
+          const inFront = this._nearPlane.distanceToPoint(this._cubeCenter.set(cx, cy, cz)) >= 0;
+          const scale = inFront ? 1 : 0.0001;
+
+          this._dummy.position.set(cx, cy, cz);
+          this._dummy.scale.setScalar(scale);
+          this._dummy.updateMatrix();
+          this.ghostMesh.setMatrixAt(i, this._dummy.matrix);
+          this.outlineMesh.setMatrixAt(i, this._dummy.matrix);
+
+          if (!inFront) continue;
+
+          let color = null;
           if (this._trigFlash[i] > 0) {
             const t = this._trigFlash[i] / FLASH_FRAMES;
             _c.lerpColors(COLOR_ON, COLOR_TRIG, t);
@@ -153,9 +182,7 @@ export class Renderer {
           }
 
           if (color) {
-            this._dummy.position.set(x * SPACING + GRID_OFFSET, y * SPACING + GRID_OFFSET, z * SPACING + GRID_OFFSET);
-            this._dummy.scale.setScalar(1);
-            this._dummy.updateMatrix();
+            this._dummy.scale.setScalar(1); // already set, but be explicit
             this.mesh.setMatrixAt(activeCount, this._dummy.matrix);
             this.mesh.setColorAt(activeCount, color);
             activeCount++;
@@ -167,6 +194,8 @@ export class Renderer {
     this.mesh.count = activeCount;
     this.mesh.instanceMatrix.needsUpdate = true;
     this.mesh.instanceColor.needsUpdate = true;
+    this.ghostMesh.instanceMatrix.needsUpdate = true;
+    this.outlineMesh.instanceMatrix.needsUpdate = true;
 
     if (currentStep !== null) {
       this.slab.visible = true;
