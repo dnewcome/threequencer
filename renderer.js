@@ -5,13 +5,12 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 import { SIZE } from './grid.js';
 
-const VOXEL_SIZE    = 0.70;   // smaller = more gap between cubes
-const OUTLINE_SIZE  = 0.84;   // slightly larger shell rendered backface-only for edge glow
-const GRID_OFFSET   = -(SIZE - 1) / 2;
+const VOXEL_SIZE  = 0.70;
+const SPACING     = 1.1;                       // center-to-center distance (1.0 = touching gaps)
+const GRID_OFFSET = -(SIZE - 1) / 2 * SPACING;
 
-const COLOR_OFF      = new THREE.Color(0x555577);
-const COLOR_ON       = new THREE.Color(0x89b4fa);
-const COLOR_TRIG = new THREE.Color(0xffffff);  // white flash, lerps back to COLOR_ON
+const COLOR_ON   = new THREE.Color(0x89b4fa);
+const COLOR_TRIG = new THREE.Color(0xffffff);
 
 export class Renderer {
   constructor(canvas) {
@@ -32,23 +31,40 @@ export class Renderer {
     this.controls.dampingFactor = 0.08;
 
     const count = SIZE * SIZE * SIZE;
-
-    // Fill mesh — rounded box, vertex colors driven by instanceColor
     const fillGeo = new RoundedBoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE, 2, 0.08);
+
+    // Active-voxel mesh — only renders as many instances as there are active voxels.
+    // mesh.count is updated each frame to match the active count.
     const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true });
     this.mesh = new THREE.InstancedMesh(fillGeo, fillMat, count);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.count = 0;
     this.scene.add(this.mesh);
 
-    // Outline mesh — same geometry scaled up, back-faces only, flat dark color
-    // Back faces peek around the fill mesh edges creating an outline
-    const outlineGeo = new RoundedBoxGeometry(OUTLINE_SIZE, OUTLINE_SIZE, OUTLINE_SIZE, 2, 0.10);
+    // Ghost grid — all cubes at very low opacity so you can see the grid structure
+    // and click any position. Transparent so active cubes show through clearly.
+    const ghostMat = new THREE.MeshBasicMaterial({
+      color: 0x3a3a5a,
+      transparent: true,
+      opacity: 0.06,
+      depthWrite: false,
+    });
+    this.ghostMesh = new THREE.InstancedMesh(fillGeo, ghostMat, count);
+    this.ghostMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    this.scene.add(this.ghostMesh);
+
+    // Ghost outline — slightly larger cube, back-faces only, so the edges peek
+    // around the fill and draw a visible border on each unlit cube.
+    const outlineGeo = new RoundedBoxGeometry(VOXEL_SIZE * 1.18, VOXEL_SIZE * 1.18, VOXEL_SIZE * 1.18, 2, 0.10);
     const outlineMat = new THREE.MeshBasicMaterial({
-      color: 0x22223a,
+      color: 0x5a5a8a,
       side: THREE.BackSide,
+      transparent: true,
+      opacity: 0.4,
+      depthWrite: false,
     });
     this.outlineMesh = new THREE.InstancedMesh(outlineGeo, outlineMat, count);
-    this.outlineMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.outlineMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
     this.scene.add(this.outlineMesh);
 
     // Step-plane slab
@@ -85,52 +101,61 @@ export class Renderer {
       for (let y = 0; y < SIZE; y++) {
         for (let x = 0; x < SIZE; x++) {
           const i = this._voxelIndex(x, y, z);
-          this._dummy.position.set(
-            x + GRID_OFFSET,
-            y + GRID_OFFSET,
-            z + GRID_OFFSET,
-          );
+          this._dummy.position.set(x * SPACING + GRID_OFFSET, y * SPACING + GRID_OFFSET, z * SPACING + GRID_OFFSET);
+          this._dummy.scale.setScalar(1);
           this._dummy.updateMatrix();
-          this.mesh.setMatrixAt(i, this._dummy.matrix);
+          this.ghostMesh.setMatrixAt(i, this._dummy.matrix);
           this.outlineMesh.setMatrixAt(i, this._dummy.matrix);
-          this.mesh.setColorAt(i, COLOR_OFF);
         }
       }
     }
-    this.mesh.instanceMatrix.needsUpdate = true;
-    this.mesh.instanceColor.needsUpdate = true;
+    this.ghostMesh.instanceMatrix.needsUpdate = true;
     this.outlineMesh.instanceMatrix.needsUpdate = true;
+
+    // Prime the instanceColor buffer so needsUpdate works in updateColors
+    this.mesh.setColorAt(0, COLOR_ON);
+    this.mesh.instanceColor.needsUpdate = true;
   }
 
   updateColors(grid, currentStep) {
     const FLASH_FRAMES = 18;
     const _c = new THREE.Color();
+    let activeCount = 0;
 
     for (let z = 0; z < SIZE; z++) {
       for (let y = 0; y < SIZE; y++) {
         for (let x = 0; x < SIZE; x++) {
           const i = this._voxelIndex(x, y, z);
-          let color;
+          let color = null;
+
           if (this._trigFlash[i] > 0) {
-            // Lerp: white → COLOR_ON over FLASH_FRAMES
             const t = this._trigFlash[i] / FLASH_FRAMES;
             _c.lerpColors(COLOR_ON, COLOR_TRIG, t);
             color = _c;
             this._trigFlash[i]--;
           } else if (grid.get(x, y, z)) {
             color = COLOR_ON;
-          } else {
-            color = COLOR_OFF;
           }
-          this.mesh.setColorAt(i, color);
+
+          if (color) {
+            this._dummy.position.set(x * SPACING + GRID_OFFSET, y * SPACING + GRID_OFFSET, z * SPACING + GRID_OFFSET);
+            this._dummy.scale.setScalar(1);
+            this._dummy.updateMatrix();
+            this.mesh.setMatrixAt(activeCount, this._dummy.matrix);
+            this.mesh.setColorAt(activeCount, color);
+            activeCount++;
+          }
         }
       }
     }
+
+    this.mesh.count = activeCount;
+    this.mesh.instanceMatrix.needsUpdate = true;
     this.mesh.instanceColor.needsUpdate = true;
 
     if (currentStep !== null) {
       this.slab.visible = true;
-      this.slab.position.x = currentStep + GRID_OFFSET;
+      this.slab.position.x = currentStep * SPACING + GRID_OFFSET;
     }
   }
 
@@ -147,7 +172,7 @@ export class Renderer {
       -((event.clientY - rect.top)  / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(this._pointer, this.camera);
-    const hits = this.raycaster.intersectObject(this.mesh);
+    const hits = this.raycaster.intersectObject(this.ghostMesh);
     if (!hits.length) return null;
     const id = hits[0].instanceId;
     return {
