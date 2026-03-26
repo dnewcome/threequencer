@@ -8,10 +8,12 @@ import { SIZE } from './grid.js';
 const VOXEL_SIZE      = 0.70;
 const SPACING         = 1.1;   // center-to-center distance (1.0 = touching gaps)
 const GRID_OFFSET     = -(SIZE - 1) / 2 * SPACING;
-const NEAR_CULL_DIST  = 10;    // units from camera; cubes closer than this disappear
+const NEAR_CULL_DIST  = 10;    // units from camera; cubes closer than this disappear entirely
+const NEAR_FADE_ZONE  = 6;     // units beyond cull plane over which active cubes fade out
 
 const COLOR_ON   = new THREE.Color(0x89b4fa);
 const COLOR_TRIG = new THREE.Color(0xffffff);
+const COLOR_BG   = new THREE.Color(0x13131f); // scene background — fade target
 
 export class Renderer {
   constructor(canvas) {
@@ -159,9 +161,13 @@ export class Renderer {
           const cy = y * SPACING + GRID_OFFSET;
           const cz = z * SPACING + GRID_OFFSET;
 
-          // All-or-nothing cull based on cube center vs near plane
-          const inFront = this._nearPlane.distanceToPoint(this._cubeCenter.set(cx, cy, cz)) >= 0;
-          const scale = inFront ? 1 : 0.0001;
+          // Three visibility zones based on signed distance from the cull plane:
+          //   dist <  0              → fully culled (ghost/outline hidden, no fill)
+          //   0 <= dist < FADE_ZONE  → fading: ghost/outline visible, fill color lerps to background
+          //   dist >= FADE_ZONE      → fully visible
+          const dist = this._nearPlane.distanceToPoint(this._cubeCenter.set(cx, cy, cz));
+          const culled = dist < 0;
+          const scale = culled ? 0.0001 : 1;
 
           this._dummy.position.set(cx, cy, cz);
           this._dummy.scale.setScalar(scale);
@@ -169,7 +175,7 @@ export class Renderer {
           this.ghostMesh.setMatrixAt(i, this._dummy.matrix);
           this.outlineMesh.setMatrixAt(i, this._dummy.matrix);
 
-          if (!inFront) continue;
+          if (culled) continue;
 
           let color = null;
           if (this._trigFlash[i] > 0) {
@@ -182,7 +188,12 @@ export class Renderer {
           }
 
           if (color) {
-            this._dummy.scale.setScalar(1); // already set, but be explicit
+            // In the fade zone, lerp fill color toward background so cubes dissolve before culling
+            if (dist < NEAR_FADE_ZONE) {
+              const fade = dist / NEAR_FADE_ZONE; // 0 at cull edge → 1 at fade start
+              _c.lerpColors(COLOR_BG, color, fade);
+              color = _c;
+            }
             this.mesh.setMatrixAt(activeCount, this._dummy.matrix);
             this.mesh.setColorAt(activeCount, color);
             activeCount++;

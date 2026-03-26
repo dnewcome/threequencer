@@ -49,20 +49,44 @@ SCREENSHOT_STATUS="no screenshot"
 if [[ $SKIP_SCREENSHOT -eq 0 ]]; then
 
   if [[ $WINDOW_MODE -eq 1 ]]; then
-    # Window mode: capture the live browser window (shows real WebGL)
-    if [[ -z "${DISPLAY:-}" ]]; then
-      echo "⚠️  --window requires a display (DISPLAY not set) — skipping screenshot"
-      SCREENSHOT_STATUS="no display"
+    # Window mode: capture the live screen (shows real WebGL)
+    # Wayland: use grim; X11: use xdotool + import
+    echo "📸 Capturing live screen..."
+    if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+      # Wayland path
+      if command -v grim &>/dev/null && grim "$SCREENSHOT_FILE" 2>/dev/null; then
+        # wlroots-based compositor (Sway, Hyprland, etc.)
+        SCREENSHOT_STATUS="captured (grim/wayland)"
+      else
+        # GNOME Wayland: PrtSc saves to ~/Pictures/Screenshots — wait for user
+        SHOTS_DIR="$HOME/Pictures/Screenshots"
+        mkdir -p "$SHOTS_DIR"
+        # Record newest file before the prompt
+        BEFORE=$(ls -t "$SHOTS_DIR"/*.png 2>/dev/null | head -1 || true)
+        echo ""
+        echo "  ┌─────────────────────────────────────────────────┐"
+        echo "  │  Press PrtSc to take a screenshot, then         │"
+        echo "  │  press Enter here when done.                    │"
+        echo "  └─────────────────────────────────────────────────┘"
+        read -r _
+        # Find the newest file added after the prompt
+        AFTER=$(ls -t "$SHOTS_DIR"/*.png 2>/dev/null | head -1 || true)
+        if [[ -n "$AFTER" && "$AFTER" != "$BEFORE" ]]; then
+          cp "$AFTER" "$SCREENSHOT_FILE"
+          SCREENSHOT_STATUS="captured (gnome prtsc)"
+        else
+          echo "⚠️  No new screenshot detected in $SHOTS_DIR"
+          SCREENSHOT_STATUS="no new screenshot"
+        fi
+      fi
     else
-      echo "📸 Capturing live window..."
+      # X11 path
       WIN_ID=""
-      # Try xdotool to find browser window showing the app
       if command -v xdotool &>/dev/null; then
         WIN_ID=$(xdotool search --onlyvisible --name "Threequencer" 2>/dev/null | head -1 || true)
         [[ -z "$WIN_ID" ]] && WIN_ID=$(xdotool search --onlyvisible --name "localhost:$PORT" 2>/dev/null | head -1 || true)
         [[ -z "$WIN_ID" ]] && WIN_ID=$(xdotool search --onlyvisible --name "localhost" 2>/dev/null | head -1 || true)
       fi
-
       if [[ -n "$WIN_ID" ]]; then
         echo "   Found window $WIN_ID via xdotool"
         import -window "$WIN_ID" "$SCREENSHOT_FILE" 2>/dev/null \
