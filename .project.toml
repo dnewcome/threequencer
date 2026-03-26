@@ -14,5 +14,5 @@ devlog_tag = "threequencer"
 devlog_dest = "../dnuke.com/src/blog/posts"
 
 [devlog]
-version = "v1.0"
+version = "v1.1"
 source = "https://github.com/dnewcome/devlog-tools"
