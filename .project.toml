@@ -18,5 +18,5 @@ type = "web"
 files = ["index.html", "main.js", "grid.js", "renderer.js", "audio.js", "clock.js"]
 
 [devlog]
-version = "v1.1"
+version = "v1.2"
 source = "https://github.com/dnewcome/devlog-tools"
